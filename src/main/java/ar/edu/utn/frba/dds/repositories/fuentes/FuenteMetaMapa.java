@@ -1,0 +1,111 @@
+package ar.edu.utn.frba.dds.repositories.fuentes;
+
+import ar.edu.utn.frba.dds.contracts.Fuente;
+import ar.edu.utn.frba.dds.exceptions.HttpNotFoundException;
+import ar.edu.utn.frba.dds.models.Hecho;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.ArrayList;
+import java.util.List;
+import javax.persistence.Column;
+import javax.persistence.DiscriminatorValue;
+import javax.persistence.Entity;
+import javax.persistence.Transient;
+
+@Entity
+@DiscriminatorValue("MetaMapa")
+public class FuenteMetaMapa extends Fuente {
+
+  @Column(name = "ruta_api")
+  private final String rutaApi;
+
+  @Transient private final HttpClient cliente;
+  @Transient private List<Hecho> hechosObtenidos;
+
+  @SuppressFBWarnings("CT_CONSTRUCTOR_THROW")
+  public FuenteMetaMapa(String rutaApi, HttpClient cliente) {
+    this.rutaApi = rutaApi;
+    this.cliente = cliente;
+    this.hechosObtenidos = new ArrayList<>();
+    this.agregarHechos();
+  }
+
+  private void agregarHechos() {
+
+    this.hechosObtenidos.addAll(this.actualizarHechos());
+  }
+
+  public List<Hecho> obtenerHechos() {
+    return new ArrayList<>(hechosObtenidos);
+  }
+
+  private List<Hecho> actualizarHechos() {
+    String url = rutaApi + "/hechos";
+
+    try {
+
+      HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).GET().build();
+
+      HttpResponse<String> response = cliente.send(request, HttpResponse.BodyHandlers.ofString());
+      int status = response.statusCode();
+
+      if (status == 404) {
+        throw new HttpNotFoundException("Recurso no encontrado en: " + url);
+      } else if (status >= 400) {
+        throw new RuntimeException("Error HTTP " + status + " al acceder a: " + url);
+      }
+
+      ObjectMapper mapper = new ObjectMapper();
+      mapper.registerModule(new JavaTimeModule());
+      return mapper.readValue(response.body(), new TypeReference<List<Hecho>>() {});
+
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  /*
+  //Obtenemos los hechos sin filtrar , se podria mejorar haciendo  que los filtros
+  // se apliquen directamente desde la fuente y se entreguen filtrados en la coleccion
+  public List<Hecho> obtenerHechos() {
+    String url = rutaApi + "/hechos";
+
+    try {
+
+      HttpRequest request = HttpRequest.newBuilder()
+
+          .uri(URI.create(url))
+          .GET()
+          .build();
+
+      HttpResponse<String> response = cliente.send(request, HttpResponse.BodyHandlers.ofString());
+      int status = response.statusCode();
+
+      if (status == 404) {
+        throw new HttpNotFoundException("Recurso no encontrado en: " + url);
+      } else if (status >= 400) {
+        throw new RuntimeException("Error HTTP " + status + " al acceder a: " + url);
+      }
+
+      ObjectMapper mapper = new ObjectMapper();
+      mapper.registerModule(new JavaTimeModule());
+      return mapper.readValue(response.body(), new TypeReference<List<Hecho>>() {
+      });
+
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
+  }*/
+
+}
